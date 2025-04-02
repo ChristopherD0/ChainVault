@@ -1,0 +1,14 @@
+node_modules/
+*.log
+.claude
+database.db
+.env
+build/
+.DS_Store
+npm-debug.log*
+CLAUDE.md
+dist/
+coverage/
+*.sqlite
+.vscode/
+temp/
