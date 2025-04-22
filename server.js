@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const db = require('./db');
+const priceService = require('./priceService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -39,6 +40,52 @@ app.post('/api/portfolio', (req, res) => {
             res.json({ id: this.lastID });
         }
     );
+});
+
+// Get current price for a symbol
+app.get('/api/price/:symbol', async (req, res) => {
+    try {
+        const price = await priceService.getCurrentPrice(req.params.symbol);
+        res.json({ symbol: req.params.symbol, price });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get portfolio with current values
+app.get('/api/portfolio/values', async (req, res) => {
+    try {
+        const portfolio = await new Promise((resolve, reject) => {
+            db.all('SELECT * FROM portfolio', [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+
+        const portfolioWithValues = await Promise.all(
+            portfolio.map(async (item) => {
+                try {
+                    const currentPrice = await priceService.getCurrentPrice(item.symbol);
+                    const currentValue = item.amount * currentPrice;
+                    const pnl = currentValue - (item.amount * item.purchase_price);
+                    
+                    return {
+                        ...item,
+                        current_price: currentPrice,
+                        current_value: currentValue,
+                        pnl: pnl,
+                        pnl_percent: ((currentPrice - item.purchase_price) / item.purchase_price * 100)
+                    };
+                } catch (error) {
+                    return { ...item, current_price: null, error: 'Price unavailable' };
+                }
+            })
+        );
+
+        res.json(portfolioWithValues);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 app.listen(PORT, () => {
