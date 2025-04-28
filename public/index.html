@@ -16,6 +16,11 @@
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
         th { background: #f8f9fa; }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .summary { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .summary h3 { margin-top: 0; }
+        .loading { color: #666; font-style: italic; }
     </style>
 </head>
 <body>
@@ -49,36 +54,108 @@
     
     <div class="portfolio">
         <h2>Portfolio</h2>
+        <div id="summary" class="summary" style="display: none;">
+            <h3>Portfolio Summary</h3>
+            <div id="summaryContent"></div>
+        </div>
         <div id="portfolioData">Loading...</div>
+        <button onclick="refreshPrices()" id="refreshBtn">Refresh Prices</button>
     </div>
 
     <script>
-        async function loadPortfolio() {
+        async function loadPortfolio(withValues = true) {
             try {
-                const response = await fetch('/api/portfolio');
+                document.getElementById('portfolioData').innerHTML = '<p class="loading">Loading...</p>';
+                const endpoint = withValues ? '/api/portfolio/values' : '/api/portfolio';
+                const response = await fetch(endpoint);
                 const data = await response.json();
                 
                 if (data.length === 0) {
                     document.getElementById('portfolioData').innerHTML = '<p>No assets in portfolio yet.</p>';
+                    document.getElementById('summary').style.display = 'none';
                     return;
                 }
                 
-                let html = '<table><thead><tr><th>Symbol</th><th>Amount</th><th>Purchase Price</th><th>Purchase Date</th><th>Notes</th></tr></thead><tbody>';
-                data.forEach(item => {
-                    html += `<tr>
-                        <td>${item.symbol}</td>
-                        <td>${item.amount}</td>
-                        <td>$${item.purchase_price}</td>
-                        <td>${new Date(item.purchase_date).toLocaleDateString()}</td>
-                        <td>${item.notes || '-'}</td>
-                    </tr>`;
-                });
-                html += '</tbody></table>';
-                
-                document.getElementById('portfolioData').innerHTML = html;
+                if (withValues) {
+                    displayPortfolioWithValues(data);
+                } else {
+                    displayBasicPortfolio(data);
+                }
             } catch (error) {
                 document.getElementById('portfolioData').innerHTML = '<p>Error loading portfolio</p>';
             }
+        }
+        
+        function displayPortfolioWithValues(data) {
+            let totalValue = 0;
+            let totalInvested = 0;
+            
+            let html = '<table><thead><tr><th>Symbol</th><th>Amount</th><th>Purchase Price</th><th>Current Price</th><th>Current Value</th><th>P&L</th><th>P&L %</th></tr></thead><tbody>';
+            data.forEach(item => {
+                if (item.current_value) {
+                    totalValue += item.current_value;
+                    totalInvested += (item.amount * item.purchase_price);
+                    
+                    const pnlClass = item.pnl >= 0 ? 'positive' : 'negative';
+                    const pnlSign = item.pnl >= 0 ? '+' : '';
+                    
+                    html += `<tr>
+                        <td><strong>${item.symbol}</strong></td>
+                        <td>${item.amount}</td>
+                        <td>$${item.purchase_price.toFixed(2)}</td>
+                        <td>$${item.current_price?.toFixed(2) || 'N/A'}</td>
+                        <td>$${item.current_value?.toFixed(2) || 'N/A'}</td>
+                        <td class="${pnlClass}">${pnlSign}$${item.pnl?.toFixed(2) || 'N/A'}</td>
+                        <td class="${pnlClass}">${pnlSign}${item.pnl_percent?.toFixed(2) || 'N/A'}%</td>
+                    </tr>`;
+                } else {
+                    html += `<tr>
+                        <td><strong>${item.symbol}</strong></td>
+                        <td>${item.amount}</td>
+                        <td>$${item.purchase_price.toFixed(2)}</td>
+                        <td colspan="4">${item.error || 'Price unavailable'}</td>
+                    </tr>`;
+                }
+            });
+            html += '</tbody></table>';
+            
+            const totalPnL = totalValue - totalInvested;
+            const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested * 100) : 0;
+            const pnlClass = totalPnL >= 0 ? 'positive' : 'negative';
+            const pnlSign = totalPnL >= 0 ? '+' : '';
+            
+            document.getElementById('summaryContent').innerHTML = `
+                <p><strong>Total Portfolio Value:</strong> $${totalValue.toFixed(2)}</p>
+                <p><strong>Total Invested:</strong> $${totalInvested.toFixed(2)}</p>
+                <p><strong>Total P&L:</strong> <span class="${pnlClass}">${pnlSign}$${totalPnL.toFixed(2)} (${pnlSign}${totalPnLPercent.toFixed(2)}%)</span></p>
+            `;
+            document.getElementById('summary').style.display = 'block';
+            document.getElementById('portfolioData').innerHTML = html;
+        }
+        
+        function displayBasicPortfolio(data) {
+            let html = '<table><thead><tr><th>Symbol</th><th>Amount</th><th>Purchase Price</th><th>Purchase Date</th><th>Notes</th></tr></thead><tbody>';
+            data.forEach(item => {
+                html += `<tr>
+                    <td>${item.symbol}</td>
+                    <td>${item.amount}</td>
+                    <td>$${item.purchase_price}</td>
+                    <td>${new Date(item.purchase_date).toLocaleDateString()}</td>
+                    <td>${item.notes || '-'}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('portfolioData').innerHTML = html;
+            document.getElementById('summary').style.display = 'none';
+        }
+        
+        async function refreshPrices() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            await loadPortfolio(true);
+            btn.disabled = false;
+            btn.textContent = 'Refresh Prices';
         }
         
         document.getElementById('portfolioForm').addEventListener('submit', async (e) => {
