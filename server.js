@@ -28,16 +28,25 @@ app.get('/api/portfolio', (req, res) => {
 // Add to portfolio
 app.post('/api/portfolio', (req, res) => {
     const { symbol, amount, purchase_price, notes } = req.body;
+    
+    if (!symbol || !amount || !purchase_price) {
+        return res.status(400).json({ error: 'Symbol, amount, and purchase_price are required' });
+    }
+    
+    if (amount <= 0 || purchase_price <= 0) {
+        return res.status(400).json({ error: 'Amount and price must be positive numbers' });
+    }
+    
     const purchase_date = new Date().toISOString();
     
     db.run(
         'INSERT INTO portfolio (symbol, amount, purchase_price, purchase_date, notes) VALUES (?, ?, ?, ?, ?)',
-        [symbol, amount, purchase_price, purchase_date, notes],
+        [symbol.toUpperCase(), amount, purchase_price, purchase_date, notes || ''],
         function(err) {
             if (err) {
                 return res.status(500).json({ error: err.message });
             }
-            res.json({ id: this.lastID });
+            res.json({ id: this.lastID, message: 'Asset added successfully' });
         }
     );
 });
